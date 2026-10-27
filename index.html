@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>타임라인 에디터</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            neon: '#ccff00',
+            cyberDark: '#111111'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* Strict font inherit rule for site-default fonts */
+    body, button, input, textarea, select, div, span, h1, h2, h3, h4, p {
+      font-family: inherit !important;
+    }
+
+    /* Clean Sharp Borders & Absolute NO Shadows */
+    .border-cyber {
+      border: 1px solid #111111;
+      box-shadow: none !important;
+    }
+
+    * {
+      box-shadow: none !important;
+    }
+
+    /* Visual feedback for contenteditable fields */
+    [contenteditable="true"] {
+      outline: none;
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+      border-radius: 0px;
+      padding: 1px 3px;
+    }
+
+    [contenteditable="true"]:hover {
+      background-color: rgba(204, 255, 0, 0.3);
+      cursor: text;
+    }
+
+    [contenteditable="true"]:focus {
+      background-color: rgba(204, 255, 0, 0.5);
+      border-bottom: 1px solid #000;
+    }
+
+    /* Custom Minimal Scrollbar */
+    .custom-scroll::-webkit-scrollbar {
+      width: 3px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #ffffff;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #111111;
+    }
+  </style>
+</head>
+<body class="bg-white text-black p-4 sm:p-8 min-h-screen">
+
+  <div class="max-w-6xl mx-auto space-y-6">
+    
+    <!-- Top Action Control Bar -->
+    <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-black pb-4">
+      <div class="flex items-center gap-3">
+        <h1 class="text-xl font-black tracking-tight text-black">타임라인 에디터</h1>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 w-full md:w-auto">
+        <!-- Add Event Button for Main Timeline -->
+        <button id="btnMainAddEvent" onclick="openMainEventModal()" class="px-3 py-1.5 bg-white text-black font-bold border border-black hover:bg-black hover:text-neon transition-all text-xs">
+          전체 사건 추가
+        </button>
+        <!-- Add Character Button for Character Tab -->
+        <button id="btnCharAdd" onclick="openAddCharModal()" class="hidden px-3 py-1.5 bg-white text-black font-bold border border-black hover:bg-black hover:text-neon transition-all text-xs">
+          인물 추가
+        </button>
+        
+        <!-- Save Data Button -->
+        <button onclick="saveDataToFile()" class="px-3 py-1.5 bg-white text-black font-bold border border-black hover:bg-neutral-100 transition-all text-xs">
+          데이터 저장
+        </button>
+        <!-- Load Data Button -->
+        <button onclick="triggerFileInput()" class="px-3 py-1.5 bg-white text-black font-bold border border-black hover:bg-neutral-100 transition-all text-xs">
+          데이터 불러오기
+        </button>
+        <!-- Hidden File Input -->
+        <input type="file" id="jsonFileInput" accept=".json" class="hidden" onchange="loadDataFromFile(event)">
+
+        <!-- HTML Code Copy Button -->
+        <button onclick="copyHTMLSnippet()" class="px-4 py-1.5 bg-neon text-black font-bold border border-black hover:bg-black hover:text-white transition-all text-xs">
+          <span id="copyBtnText">HTML 복사</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs (No background container) -->
+    <div class="flex items-center gap-2 text-xs">
+      <button onclick="switchMainTab('timeline')" id="tab-timeline" class="px-5 py-2 border border-black bg-black text-neon font-bold transition-all">
+        전체 타임라인
+      </button>
+      <button onclick="switchMainTab('character')" id="tab-character" class="px-5 py-2 border border-black bg-white text-black font-bold hover:bg-neutral-100 transition-all">
+        인물별 타임라인
+      </button>
+    </div>
+
+
+    <!-- ==================== TAB 1: 전체 타임라인 ==================== -->
+    <div id="section-timeline" class="py-4 space-y-8">
+      
+      <!-- Overarching Chronological Main Timeline Container -->
+      <div id="mainTimelineList" class="relative pl-6 md:pl-8 border-l-2 border-black space-y-8 my-4">
+        <!-- Dynamically populated main timeline events -->
+      </div>
+
+    </div>
+
+
+    <!-- ==================== TAB 2: 인물별 타임라인 (3-Grid Layout) ==================== -->
+    <div id="section-character" class="hidden py-4">
+      
+      <!-- Default Horizontal 3-Grid Layout -->
+      <div id="characterGrid" class="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+        <!-- Dynamically populated character columns -->
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- MODAL: 전체 타임라인 사건 추가 / 수정 -->
+  <div id="mainEventModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border-cyber max-w-md w-full p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-black pb-2">
+        <h3 id="mainEventModalTitle" class="text-sm font-bold text-black">전체 사건 추가</h3>
+        <button onclick="closeMainEventModal()" class="text-black font-bold text-sm">✕</button>
+      </div>
+
+      <form id="mainEventForm" onsubmit="saveMainEvent(event)" class="space-y-3 text-xs">
+        <input type="hidden" id="editMainEventId" value="">
+        
+        <div>
+          <label class="block font-bold mb-1">시점 / 날짜 (DATE or PHASE)</label>
+          <input type="text" id="mainEventDate" required placeholder="예: PHASE 01 / 2026.04" class="w-full p-2 border border-black outline-none focus:bg-neon/10">
+        </div>
+
+        <div>
+          <label class="block font-bold mb-1">사건 제목</label>
+          <input type="text" id="mainEventTitle" required placeholder="전체 주요 사건 제목 입력" class="w-full p-2 border border-black outline-none focus:bg-neon/10">
+        </div>
+
+        <div>
+          <label class="block font-bold mb-1">개요 및 서사</label>
+          <textarea id="mainEventDesc" rows="4" required placeholder="전체 연대기 관점에서의 사건 개요를 입력하세요..." class="w-full p-2 border border-black outline-none focus:bg-neon/10"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-black">
+          <button type="button" onclick="closeMainEventModal()" class="px-3 py-1.5 border border-black bg-white font-bold hover:bg-neutral-100">취소</button>
+          <button type="submit" class="px-3 py-1.5 border border-black bg-neon text-black font-bold hover:bg-black hover:text-white">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- MODAL: 인물별 개별 사건 추가 / 수정 -->
+  <div id="charEventModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border-cyber max-w-md w-full p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-black pb-2">
+        <h3 id="charEventModalTitle" class="text-sm font-bold text-black">인물 사건 추가</h3>
+        <button onclick="closeCharEventModal()" class="text-black font-bold text-sm">✕</button>
+      </div>
+
+      <form id="charEventForm" onsubmit="saveCharEvent(event)" class="space-y-3 text-xs">
+        <input type="hidden" id="editCharEventId" value="">
+        <input type="hidden" id="targetCharId" value="">
+        
+        <div>
+          <label class="block font-bold mb-1">날짜 / 시점</label>
+          <input type="text" id="charEventDate" required placeholder="예: 2024.03.12" class="w-full p-2 border border-black outline-none focus:bg-neon/10">
+        </div>
+
+        <div>
+          <label class="block font-bold mb-1">사건 제목</label>
+          <input type="text" id="charEventTitle" required placeholder="인물 중심 사건 제목" class="w-full p-2 border border-black outline-none focus:bg-neon/10">
+        </div>
+
+        <div>
+          <label class="block font-bold mb-1">서사 내용</label>
+          <textarea id="charEventDesc" rows="3" required placeholder="해당 인물의 개인 사건 서사를 입력하세요..." class="w-full p-2 border border-black outline-none focus:bg-neon/10"></textarea>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-black">
+          <button type="button" onclick="closeCharEventModal()" class="px-3 py-1.5 border border-black bg-white font-bold hover:bg-neutral-100">취소</button>
+          <button type="submit" class="px-3 py-1.5 border border-black bg-neon text-black font-bold hover:bg-black hover:text-white">저장</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- MODAL: 인물 추가 -->
+  <div id="charModal" class="fixed inset-0 bg-black/60 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white border-cyber max-w-md w-full p-6 space-y-4">
+      <div class="flex items-center justify-between border-b border-black pb-2">
+        <h3 class="text-sm font-bold text-black">인물 등록</h3>
+        <button onclick="closeCharModal()" class="text-black font-bold text-sm">✕</button>
+      </div>
+
+      <form id="charForm" onsubmit="saveCharacter(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-bold mb-1">이름</label>
+          <input type="text" id="charName" required placeholder="예: 윤서아" class="w-full p-2 border border-black outline-none focus:bg-neon/10">
+        </div>
+
+        <div>
+          <label class="block font-bold mb-1">영문 이름</label>
+          <input type="text" id="charSub" required placeholder="예: YOON SEO-AH" class="w-full p-2 border border-black outline-none focus:bg-neon/10">
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-black">
+          <button type="button" onclick="closeCharModal()" class="px-3 py-1.5 border border-black bg-white font-bold hover:bg-neutral-100">취소</button>
+          <button type="submit" class="px-3 py-1.5 border border-black bg-neon text-black font-bold hover:bg-black hover:text-white">등록</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- SCRIPT LOGIC -->
+  <script>
+    // Initial Default Data
+    const defaultMainEvents = [
+      {
+        id: "main-evt-1",
+        date: "2024.01",
+        title: "중앙 제어 시스템 침해 사태",
+        desc: "원인 불명의 신호가 도시 메인 프레임에 침투하여 보안 규정 전체가 무력화됨. 각 세력 간의 긴장이 극에 달한 시발점."
+      },
+      {
+        id: "main-evt-2",
+        date: "2024.08",
+        title: "제3구역 도심 봉쇄령 발령",
+        desc: "충돌 전면화에 따른 대규모 봉쇄 및 통행금지조치 단행. 각 민간 및 비공식 해결사 조직의 활동이 수면 위로 급상승함."
+      },
+      {
+        id: "main-evt-3",
+        date: "2025.04",
+        title: "임시 연합 통제 연맹 결성",
+        desc: "서로 대립하던 세력들이 거대한 공통의 위협에 직면하여 비공식적 휴전 협정을 체결하고 전선을 재배치."
+      },
+      {
+        id: "main-evt-4",
+        date: "2025.12",
+        title: "메인 프레임 완전 무력화 및 해방",
+        desc: "도시 전체를 통제하던 네트워크 인프라가 완전히 붕괴하며 각 집단이 독자적인 노선으로 분열 및 자립을 시작함."
+      }
+    ];
+
+    const defaultCharacters = [
+      {
+        id: "char-1",
+        name: "윤서아",
+        subName: "YOON SEO-AH"
+      },
+      {
+        id: "char-2",
+        name: "강도현",
+        subName: "KANG DO-HYUN"
+      },
+      {
+        id: "char-3",
+        name: "한지유",
+        subName: "HAN JI-YOO"
+      }
+    ];
+
+    const defaultCharEvents = [
+      {
+        id: "cevt-1",
+        charId: "char-1",
+        date: "2024.03.12",
+        title: "첫 만남 - 지하 센터 조우",
+        desc: "작전 구역 통제 중 윤서아가 강도현의 비공식 작전을 포착함. 두 사람의 첫 언쟁과 명함 교환 발생."
+      },
+      {
+        id: "cevt-2",
+        charId: "char-2",
+        date: "2024.08.19",
+        title: "제3구역 공동 진압 작전",
+        desc: "갑작스러운 돌발 상황 발생. 윤서아의 계획이 흐트러졌으나 강도현의 직관적인 전선 침투로 목숨을 구함."
+      },
+      {
+        id: "cevt-3",
+        charId: "char-3",
+        date: "2025.01.05",
+        title: "한지유의 팀 합류",
+        desc: "지속된 윤서아와 강도현의 갈등을 조율하기 위해 한지유가 중재자로 투입됨. 3인 체제 형성."
+      },
+      {
+        id: "cevt-4",
+        charId: "char-1",
+        date: "2025.11.20",
+        title: "네트워크 무력화 및 탈출",
+        desc: "상부의 배신을 감지한 세 인물이 역할 분담을 통해 메인 프레임을 무력화하고 탈출에 성공함."
+      }
+    ];
+
+    let mainEvents = [];
+    let characters = [];
+    let charEvents = [];
+
+    let activeTab = 'timeline';
+
+    const STORAGE_KEY = 'cyberpunk_timeline_editor_data';
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadStateFromLocalStorage();
+      renderApp();
+    });
+
+    // LocalStorage Operations
+    function saveStateToLocalStorage() {
+      const state = {
+        mainEvents,
+        characters,
+        charEvents
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (err) {
+        console.error("Failed to save state to localStorage", err);
+      }
+    }
+
+    function loadStateFromLocalStorage() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          mainEvents = parsed.mainEvents || defaultMainEvents;
+          characters = parsed.characters || defaultCharacters;
+          charEvents = parsed.charEvents || defaultCharEvents;
+          return;
+        }
+      } catch (err) {
+        console.error("Failed to load state from localStorage", err);
+      }
+      mainEvents = [...defaultMainEvents];
+      characters = [...defaultCharacters];
+      charEvents = [...defaultCharEvents];
+    }
+
+    // Save Data to JSON File
+    function saveDataToFile() {
+      const state = {
+        mainEvents,
+        characters,
+        charEvents
+      };
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", "timeline_data.json");
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      saveStateToLocalStorage();
+    }
+
+    // Load Data from JSON File
+    function triggerFileInput() {
+      document.getElementById('jsonFileInput').click();
+    }
+
+    function loadDataFromFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const parsed = JSON.parse(e.target.result);
+          if (parsed.mainEvents && parsed.characters && parsed.charEvents) {
+            mainEvents = parsed.mainEvents;
+            characters = parsed.characters;
+            charEvents = parsed.charEvents;
+            saveStateToLocalStorage();
+            renderApp();
+          } else {
+            console.error("올바르지 않은 JSON 데이터 구조입니다.");
+          }
+        } catch (err) {
+          console.error("JSON 파싱 오류", err);
+        }
+      };
+      reader.readAsText(file);
+      event.target.value = '';
+    }
+
+    function renderApp() {
+      renderMainTimeline();
+      renderCharacterGrid();
+    }
+
+    // Overall Main Timeline
+    function renderMainTimeline() {
+      const container = document.getElementById('mainTimelineList');
+
+      let sortedEvents = [...mainEvents].sort((a, b) => a.date.localeCompare(b.date));
+
+      if (sortedEvents.length === 0) {
+        container.innerHTML = `
+          <div class="py-12 text-center text-neutral-400 text-xs border border-dashed border-black">
+            등록된 전체 사건이 없습니다.
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      sortedEvents.forEach((item) => {
+        html += `
+          <div class="relative group">
+            <!-- Chronological Timeline Node Marker -->
+            <div class="absolute -left-[31px] md:-left-[39px] top-1.5 w-4 h-4 bg-black border-2 border-neon flex items-center justify-center">
+              <div class="w-1.5 h-1.5 bg-neon"></div>
+            </div>
+
+            <!-- Event Text Box -->
+            <div class="border-cyber border-l-4 border-l-black bg-white p-5 space-y-3 transition-all hover:border-l-neon">
+              <div class="flex flex-wrap items-center justify-between border-b border-black pb-2 gap-2 text-xs">
+                <div class="flex items-center gap-2">
+                  <span class="font-mono font-black bg-black text-neon px-2.5 py-0.5" contenteditable="true" onblur="updateMainEventData('${item.id}', 'date', this.innerText)">${item.date}</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button onclick="openEditMainEventModal('${item.id}')" class="text-xs font-bold text-black hover:underline">수정</button>
+                  <button onclick="deleteMainEvent('${item.id}')" class="text-xs font-bold text-red-600 hover:underline">삭제</button>
+                </div>
+              </div>
+
+              <div>
+                <h3 class="text-base font-black text-black mb-1" contenteditable="true" onblur="updateMainEventData('${item.id}', 'title', this.innerText)">${item.title}</h3>
+                <p class="text-xs leading-relaxed text-black" contenteditable="true" onblur="updateMainEventData('${item.id}', 'desc', this.innerText)">${item.desc}</p>
+              </div>
+            </div>
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // Character Timeline 3-Grid Layout
+    function renderCharacterGrid() {
+      const container = document.getElementById('characterGrid');
+
+      if (characters.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-3 py-12 text-center text-neutral-400 text-xs border border-dashed border-black">
+            등록된 인물이 없습니다.
+          </div>
+        `;
+        return;
+      }
+
+      let html = '';
+      characters.forEach((char) => {
+        const eventsForChar = charEvents.filter(e => e.charId === char.id);
+        eventsForChar.sort((a, b) => a.date.localeCompare(b.date));
+
+        let eventsHtml = '';
+        if (eventsForChar.length === 0) {
+          eventsHtml = `<div class="py-4 text-center text-neutral-400 text-[11px] border border-dashed border-neutral-300">사건 없음</div>`;
+        } else {
+          eventsForChar.forEach(e => {
+            eventsHtml += `
+              <div class="border border-black p-3 space-y-1.5 bg-white relative group">
+                <div class="flex items-center justify-between text-[11px]">
+                  <span class="font-bold font-mono bg-black text-neon px-1.5 py-0.5" contenteditable="true" onblur="updateCharEventData('${e.id}', 'date', this.innerText)">${e.date}</span>
+                  <button onclick="deleteCharEvent('${e.id}')" class="text-red-600 hover:underline text-[10px]">삭제</button>
+                </div>
+                <div class="font-bold text-xs text-black" contenteditable="true" onblur="updateCharEventData('${e.id}', 'title', this.innerText)">${e.title}</div>
+                <p class="text-[11px] text-black leading-relaxed" contenteditable="true" onblur="updateCharEventData('${e.id}', 'desc', this.innerText)">${e.desc}</p>
+              </div>
+            `;
+          });
+        }
+
+        html += `
+          <div class="border-cyber bg-white p-4 space-y-4 flex flex-col justify-between h-full">
+            
+            <!-- Character Header Card (Only Name & English Name) -->
+            <div class="border-b border-black pb-3">
+              <div class="flex items-start justify-between">
+                <div>
+                  <h3 class="text-lg font-bold text-black" contenteditable="true" onblur="updateCharData('${char.id}', 'name', this.innerText)">${char.name}</h3>
+                  <span class="text-[10px] text-neutral-500 font-mono tracking-widest uppercase" contenteditable="true" onblur="updateCharData('${char.id}', 'subName', this.innerText)">${char.subName}</span>
+                </div>
+                <button onclick="deleteCharacter('${char.id}')" class="text-xs text-neutral-400 hover:text-red-600 font-bold" title="삭제">
+                  삭제
+                </button>
+              </div>
+            </div>
+
+            <!-- Character Specific Events Stack -->
+            <div class="space-y-2 flex-grow custom-scroll max-h-[460px] overflow-y-auto pr-1">
+              <div class="flex items-center justify-between pb-1">
+                <span class="text-xs font-bold text-black">개별 사건 서사</span>
+                <button onclick="openAddCharEventModal('${char.id}')" class="text-[11px] font-bold text-black hover:underline">+ 사건 추가</button>
+              </div>
+              
+              <div class="space-y-2">
+                ${eventsHtml}
+              </div>
+            </div>
+
+          </div>
+        `;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // Inline Update Handlers
+    function updateMainEventData(id, field, value) {
+      const item = mainEvents.find(e => e.id === id);
+      if (item) {
+        item[field] = value.trim();
+        saveStateToLocalStorage();
+      }
+    }
+
+    function updateCharEventData(id, field, value) {
+      const item = charEvents.find(e => e.id === id);
+      if (item) {
+        item[field] = value.trim();
+        saveStateToLocalStorage();
+      }
+    }
+
+    function updateCharData(id, field, value) {
+      const char = characters.find(c => c.id === id);
+      if (char) {
+        char[field] = value.trim();
+        saveStateToLocalStorage();
+      }
+    }
+
+    // Main Timeline Modal Controls
+    function openMainEventModal() {
+      document.getElementById('editMainEventId').value = '';
+      document.getElementById('mainEventModalTitle').innerText = '전체 사건 추가';
+      document.getElementById('mainEventForm').reset();
+      document.getElementById('mainEventModal').classList.remove('hidden');
+    }
+
+    function openEditMainEventModal(id) {
+      const item = mainEvents.find(e => e.id === id);
+      if (!item) return;
+
+      document.getElementById('editMainEventId').value = item.id;
+      document.getElementById('mainEventModalTitle').innerText = '전체 사건 수정';
+      document.getElementById('mainEventDate').value = item.date;
+      document.getElementById('mainEventTitle').value = item.title;
+      document.getElementById('mainEventDesc').value = item.desc;
+
+      document.getElementById('mainEventModal').classList.remove('hidden');
+    }
+
+    function closeMainEventModal() {
+      document.getElementById('mainEventModal').classList.add('hidden');
+    }
+
+    function saveMainEvent(e) {
+      e.preventDefault();
+      const editId = document.getElementById('editMainEventId').value;
+      const date = document.getElementById('mainEventDate').value;
+      const title = document.getElementById('mainEventTitle').value;
+      const desc = document.getElementById('mainEventDesc').value;
+
+      if (editId) {
+        const item = mainEvents.find(e => e.id === editId);
+        if (item) {
+          item.date = date;
+          item.title = title;
+          item.desc = desc;
+        }
+      } else {
+        mainEvents.push({
+          id: 'main-evt-' + Date.now(),
+          date,
+          title,
+          desc
+        });
+      }
+
+      saveStateToLocalStorage();
+      closeMainEventModal();
+      renderMainTimeline();
+    }
+
+    function deleteMainEvent(id) {
+      mainEvents = mainEvents.filter(e => e.id !== id);
+      saveStateToLocalStorage();
+      renderMainTimeline();
+    }
+
+    // Character Timeline Event Modal Controls
+    function openAddCharEventModal(charId) {
+      document.getElementById('editCharEventId').value = '';
+      document.getElementById('targetCharId').value = charId;
+      document.getElementById('charEventModalTitle').innerText = '인물 사건 추가';
+      document.getElementById('charEventForm').reset();
+      document.getElementById('charEventModal').classList.remove('hidden');
+    }
+
+    function closeCharEventModal() {
+      document.getElementById('charEventModal').classList.add('hidden');
+    }
+
+    function saveCharEvent(e) {
+      e.preventDefault();
+      const editId = document.getElementById('editCharEventId').value;
+      const charId = document.getElementById('targetCharId').value;
+      const date = document.getElementById('charEventDate').value;
+      const title = document.getElementById('charEventTitle').value;
+      const desc = document.getElementById('charEventDesc').value;
+
+      if (editId) {
+        const item = charEvents.find(e => e.id === editId);
+        if (item) {
+          item.date = date;
+          item.title = title;
+          item.desc = desc;
+        }
+      } else {
+        charEvents.push({
+          id: 'cevt-' + Date.now(),
+          charId,
+          date,
+          title,
+          desc
+        });
+      }
+
+      saveStateToLocalStorage();
+      closeCharEventModal();
+      renderCharacterGrid();
+    }
+
+    function deleteCharEvent(id) {
+      charEvents = charEvents.filter(e => e.id !== id);
+      saveStateToLocalStorage();
+      renderCharacterGrid();
+    }
+
+    // Character Management Modal Controls
+    function openAddCharModal() {
+      document.getElementById('charForm').reset();
+      document.getElementById('charModal').classList.remove('hidden');
+    }
+
+    function closeCharModal() {
+      document.getElementById('charModal').classList.add('hidden');
+    }
+
+    function saveCharacter(e) {
+      e.preventDefault();
+      const name = document.getElementById('charName').value;
+      const subName = document.getElementById('charSub').value;
+
+      characters.push({
+        id: 'char-' + Date.now(),
+        name,
+        subName
+      });
+
+      saveStateToLocalStorage();
+      closeCharModal();
+      renderCharacterGrid();
+    }
+
+    function deleteCharacter(id) {
+      characters = characters.filter(c => c.id !== id);
+      charEvents = charEvents.filter(e => e.charId !== id);
+      saveStateToLocalStorage();
+      renderCharacterGrid();
+    }
+
+    // Tab Switching Handlers
+    function switchMainTab(type) {
+      activeTab = type;
+      const secTimeline = document.getElementById('section-timeline');
+      const secCharacter = document.getElementById('section-character');
+      const tabTimeline = document.getElementById('tab-timeline');
+      const tabCharacter = document.getElementById('tab-character');
+      const btnMainAdd = document.getElementById('btnMainAddEvent');
+      const btnCharAdd = document.getElementById('btnCharAdd');
+
+      if (type === 'timeline') {
+        secTimeline.classList.remove('hidden');
+        secCharacter.classList.add('hidden');
+        btnMainAdd.classList.remove('hidden');
+        btnCharAdd.classList.add('hidden');
+
+        tabTimeline.className = "px-5 py-2 border border-black bg-black text-neon font-bold transition-all";
+        tabCharacter.className = "px-5 py-2 border border-black bg-white text-black font-bold hover:bg-neutral-100 transition-all";
+      } else {
+        secTimeline.classList.add('hidden');
+        secCharacter.classList.remove('hidden');
+        btnMainAdd.classList.add('hidden');
+        btnCharAdd.classList.remove('hidden');
+
+        tabCharacter.className = "px-5 py-2 border border-black bg-black text-neon font-bold transition-all";
+        tabTimeline.className = "px-5 py-2 border border-black bg-white text-black font-bold hover:bg-neutral-100 transition-all";
+      }
+    }
+
+    // HTML Export Snippet Copy
+    function copyHTMLSnippet() {
+      const containerTimeline = document.getElementById('section-timeline').cloneNode(true);
+      const containerCharacter = document.getElementById('section-character').cloneNode(true);
+
+      [containerTimeline, containerCharacter].forEach(c => {
+        c.querySelectorAll('[contenteditable="true"]').forEach(el => el.removeAttribute('contenteditable'));
+        c.querySelectorAll('button').forEach(btn => {
+          if (!btn.id.startsWith('tab-')) btn.remove();
+        });
+      });
+
+      const snippetCode = `<!-- 타임라인 틀 시작 -->
+<script src="https://cdn.tailwindcss.com"><\/script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: { neon: '#ccff00' }
+      }
+    }
+  }
+<\/script>
+<style>
+  #tistory-timeline-container, #tistory-timeline-container * {
+    font-family: inherit !important;
+    box-shadow: none !important;
+  }
+  .border-cyber { border: 1px solid #111111; box-shadow: none !important; }
+</style>
+
+<div id="tistory-timeline-container" class="max-w-6xl mx-auto my-6 bg-white text-black">
+  <div class="flex items-center gap-2 text-xs mb-4">
+    <button onclick="switchMainTab('timeline')" id="tab-timeline" class="px-5 py-2 border border-black bg-black text-neon font-bold">전체 타임라인</button>
+    <button onclick="switchMainTab('character')" id="tab-character" class="px-5 py-2 border border-black bg-white text-black font-bold">인물별 타임라인</button>
+  </div>
+
+  ${containerTimeline.outerHTML}
+  ${containerCharacter.outerHTML}
+</div>
+
+<script>
+  function switchMainTab(type) {
+    var secTimeline = document.getElementById('section-timeline');
+    var secCharacter = document.getElementById('section-character');
+    var tabTimeline = document.getElementById('tab-timeline');
+    var tabCharacter = document.getElementById('tab-character');
+
+    if (type === 'timeline') {
+      secTimeline.classList.remove('hidden');
+      secCharacter.classList.add('hidden');
+      tabTimeline.className = "px-5 py-2 border border-black bg-black text-neon font-bold";
+      tabCharacter.className = "px-5 py-2 border border-black bg-white text-black font-bold";
+    } else {
+      secTimeline.classList.add('hidden');
+      secCharacter.classList.remove('hidden');
+      tabCharacter.className = "px-5 py-2 border border-black bg-black text-neon font-bold";
+      tabTimeline.className = "px-5 py-2 border border-black bg-white text-black font-bold";
+    }
+  }
+<\/script>
+<!-- 타임라인 틀 끝 -->`;
+
+      const tempTextArea = document.createElement('textarea');
+      tempTextArea.value = snippetCode;
+      document.body.appendChild(tempTextArea);
+      tempTextArea.select();
+
+      try {
+        document.execCommand('copy');
+        const btnText = document.getElementById('copyBtnText');
+        btnText.innerText = '복사 완료!';
+        setTimeout(() => {
+          btnText.innerText = 'HTML 복사';
+        }, 2000);
+      } catch (err) {
+        console.error('Copy failed', err);
+      }
+
+      document.body.removeChild(tempTextArea);
+    }
+  </script>
+</body>
+</html>
